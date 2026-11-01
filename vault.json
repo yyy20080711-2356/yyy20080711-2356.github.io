@@ -4,10 +4,10 @@
     "name": "PBKDF2",
     "hash": "SHA-256",
     "iterations": 600000,
-    "salt": "ojkQpq2osITaikzUvg8iXg=="
+    "salt": "aapr5RbHQbLIyhYAKnLYNw=="
   },
   "manifest": {
     "path": "files/manifest.enc",
-    "iv": "F/XuOJS61NPEszxV"
+    "iv": "dvAidQ/SYDzfyeES"
   }
 }

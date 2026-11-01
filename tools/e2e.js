@@ -1,6 +1,6 @@
 /**
  * 完整回归：在真实 Chrome 里跑一遍解锁、下载、错误密码拒绝
- * 用法：node tools/e2e.js <密码>
+ * 用法：node tools/e2e.js <密码> [http端口]
  */
 'use strict';
 
@@ -12,10 +12,10 @@ const path = require('path');
 const CHROME = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const PORT = 9336;
 const password = process.argv[2];
-const PORT_HTTP = 8790;
+const PORT_HTTP = Number(process.argv[3] || process.env.URL_PORT || 8790);
 
 if (!password) {
-  console.error('用法：node tools/e2e.js <密码>');
+  console.error('用法：node tools/e2e.js <密码> [http端口]');
   process.exit(1);
 }
 
