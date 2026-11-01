@@ -1,25 +1,37 @@
 /**
  * 文件下载中心
- * 数据来源：站点根目录的 files.json
- * 新增文件时只需在 files.json 里追加一条记录，无需改动页面代码。
+ *
+ * 流程：读取 vault.json → 用户输入密码 → 派生密钥 → 解密清单 → 渲染列表
+ * 点下载时再解密单个文件，密码不对拿不到任何明文。
  */
 (function () {
   'use strict';
 
-  var MANIFEST_URL = 'files.json';
+  var VAULT_URL = 'vault.json';
 
   var state = {
+    vault: null,
+    key: null,
     files: [],
     sortKey: null,
-    sortDir: 1
+    sortDir: 1,
+    busy: false
   };
 
   var els = {
     rows: document.getElementById('fileRows'),
     tableScroll: document.getElementById('tableScroll'),
-    empty: document.getElementById('emptyState'),
-    error: document.getElementById('errorState'),
+    hero: document.querySelector('.hero'),
+    statsBar: document.getElementById('statsBar'),
+    gatePanel: document.getElementById('gatePanel'),
+    listPanel: document.getElementById('listPanel'),
+    errorPanel: document.getElementById('errorPanel'),
     errorDetail: document.getElementById('errorDetail'),
+    gateForm: document.getElementById('gateForm'),
+    gateInput: document.getElementById('passwordInput'),
+    gateSubmit: document.getElementById('gateSubmit'),
+    gateMessage: document.getElementById('gateMessage'),
+    empty: document.getElementById('emptyState'),
     count: document.getElementById('statCount'),
     size: document.getElementById('statSize'),
     updated: document.getElementById('statUpdated'),
@@ -110,10 +122,9 @@
   function renderRows() {
     var list = getSorted();
 
-    els.rows.innerHTML = list.map(function (f) {
+    els.rows.innerHTML = list.map(function (f, i) {
       var ext = extOf(f.name);
       var tone = toneOf(ext);
-      var path = escapeHtml(f.path || '');
       var desc = f.description
         ? '<span class="file-desc">' + escapeHtml(f.description) + '</span>'
         : '';
@@ -131,7 +142,9 @@
           '<td class="num">' + formatSize(f.size) + '</td>' +
           '<td class="num">' + formatDate(f.updated) + '</td>' +
           '<td>' +
-            '<a class="btn" href="' + path + '" download>' + downloadIcon + '下载</a>' +
+            '<button type="button" class="btn dl" data-index="' + i + '">' +
+              downloadIcon + '<span>下载</span>' +
+            '</button>' +
           '</td>' +
         '</tr>';
     }).join('');
@@ -155,12 +168,128 @@
     els.updated.textContent = latest ? formatDate(new Date(latest).toISOString()) : '—';
   }
 
+  /* ---------- 状态切换 ---------- */
+
   function showError(message) {
-    els.error.hidden = false;
+    els.errorPanel.hidden = false;
     els.errorDetail.textContent = message;
-    els.rows.innerHTML = '';
-    els.empty.hidden = true;
-    els.tableScroll.hidden = true;
+    els.gatePanel.hidden = true;
+    els.listPanel.hidden = true;
+    els.statsBar.hidden = true;
+    els.hero.classList.add('is-compact');
+  }
+
+  function showLocked() {
+    els.gatePanel.hidden = false;
+    els.listPanel.hidden = true;
+    els.errorPanel.hidden = true;
+    els.statsBar.hidden = true;
+    els.hero.classList.add('is-compact');
+  }
+
+  function showList() {
+    els.gatePanel.hidden = true;
+    els.listPanel.hidden = false;
+    els.errorPanel.hidden = true;
+    els.statsBar.hidden = false;
+    els.hero.classList.remove('is-compact');
+    renderStats();
+    renderRows();
+    bindRowActions();
+  }
+
+  function setGateMessage(text, isError) {
+    els.gateMessage.textContent = text || '';
+    els.gateMessage.classList.toggle('is-error', !!isError);
+  }
+
+  function setBusy(busy) {
+    state.busy = busy;
+    els.gateSubmit.disabled = busy;
+    els.gateInput.disabled = busy;
+    els.gateSubmit.textContent = busy ? '验证中…' : '解锁';
+  }
+
+  /* ---------- 解锁 ---------- */
+
+  function handleUnlock(event) {
+    event.preventDefault();
+    if (state.busy) return;
+
+    var password = els.gateInput.value;
+    if (!password) {
+      setGateMessage('请输入密码。', true);
+      els.gateInput.focus();
+      return;
+    }
+
+    setBusy(true);
+    setGateMessage('正在验证…', false);
+
+    Vault.unlock(password, state.vault)
+      .then(function (result) {
+        state.key = result.key;
+        state.files = result.files.filter(function (f) {
+          return f && f.name && f.path && f.iv;
+        });
+
+        els.gateInput.value = '';
+        setGateMessage('', false);
+        showList();
+      })
+      .catch(function (err) {
+        // GCM 认证失败 = 密码错误
+        var isWrong = err && /OperationError|认证|decrypt/i.test(
+          (err.name || '') + ' ' + (err.message || '')
+        );
+        setGateMessage(
+          isWrong
+            ? '密码不正确，请重新输入。'
+            : '解锁失败：' + (err && err.message ? err.message : '未知错误'),
+          true
+        );
+        els.gateInput.select();
+      })
+      .then(function () {
+        setBusy(false);
+      });
+  }
+
+  /* ---------- 下载 ---------- */
+
+  function bindRowActions() {
+    Array.prototype.forEach.call(
+      els.rows.querySelectorAll('.dl'),
+      function (btn) {
+        btn.addEventListener('click', function () {
+          var entry = getSorted()[Number(btn.getAttribute('data-index'))];
+          if (!entry || !state.key) return;
+
+          var label = btn.querySelector('span');
+          var original = label.textContent;
+
+          btn.disabled = true;
+          label.textContent = '解密中';
+
+          Vault.download(state.key, entry)
+            .then(function () {
+              label.textContent = '已完成';
+              setTimeout(function () {
+                label.textContent = original;
+                btn.disabled = false;
+              }, 1600);
+            })
+            .catch(function (err) {
+              label.textContent = '失败';
+              console.error(err);
+              setTimeout(function () {
+                label.textContent = original;
+                btn.disabled = false;
+              }, 2200);
+            });
+        });
+      }
+    );
   }
 
   /* ---------- 排序交互 ---------- */
@@ -188,6 +317,7 @@
         );
 
         renderRows();
+        bindRowActions();
       });
     });
   }
@@ -196,24 +326,25 @@
 
   function init() {
     if (els.year) els.year.textContent = new Date().getFullYear();
-    bindSorting();
 
-    fetch(MANIFEST_URL, { cache: 'no-cache' })
+    bindSorting();
+    els.gateForm.addEventListener('submit', handleUnlock);
+    els.gateInput.focus();
+
+    fetch(VAULT_URL, { cache: 'no-cache' })
       .then(function (res) {
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return res.json();
       })
-      .then(function (data) {
-        var list = Array.isArray(data) ? data : (data && data.files) || [];
-        state.files = list.filter(function (f) {
-          return f && f.name && f.path;
-        });
-
-        renderStats();
-        renderRows();
+      .then(function (vault) {
+        if (!vault || !vault.kdf || !vault.manifest) {
+          throw new Error('vault.json 格式不正确');
+        }
+        state.vault = vault;
+        showLocked();
       })
       .catch(function (err) {
-        showError('无法读取文件清单 files.json（' + err.message + '）。');
+        showError('无法读取加密参数 vault.json（' + err.message + '）。');
       });
   }
 

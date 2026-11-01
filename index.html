@@ -4,18 +4,19 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>文件下载中心</title>
-<meta name="description" content="杨应尧的文件下载中心，集中存放 Excel 表格等资料，支持一键下载。">
+<meta name="description" content="受保护的班级资料下载中心，需输入访问密码后使用。">
+<meta name="robots" content="noindex, nofollow">
 <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
 
 <header class="hero">
   <div class="wrap">
-    <p class="eyebrow">FILE LIBRARY</p>
+    <p class="eyebrow">PROTECTED LIBRARY</p>
     <h1>文件下载中心</h1>
-    <p class="lead">集中存放表格与文档资料，所有文件均可直接下载。</p>
+    <p class="lead">班级资料集中存放，加密保存，需验证密码后下载。</p>
 
-    <dl class="stats">
+    <dl class="stats" id="statsBar" hidden>
       <div class="stat">
         <dt>文件总数</dt>
         <dd id="statCount">—</dd>
@@ -33,10 +34,46 @@
 </header>
 
 <main class="wrap">
-  <section class="panel" aria-labelledby="listTitle">
+
+  <!-- 验证密码 -->
+  <section class="panel gate" id="gatePanel" aria-labelledby="gateTitle">
+    <div class="gate-inner">
+      <div class="gate-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+             stroke-linecap="round" stroke-linejoin="round">
+          <rect x="4" y="10.5" width="16" height="10" rx="2"/>
+          <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>
+          <circle cx="12" cy="15.5" r="1.2"/>
+        </svg>
+      </div>
+
+      <h2 id="gateTitle">请输入访问密码</h2>
+      <p class="gate-desc">文件已加密保存，输入正确密码后才会显示文件列表。</p>
+
+      <form class="gate-form" id="gateForm" novalidate>
+        <label class="sr-only" for="passwordInput">访问密码</label>
+        <input
+          type="password"
+          id="passwordInput"
+          name="password"
+          class="gate-input"
+          placeholder="访问密码"
+          autocomplete="current-password"
+          spellcheck="false"
+          required>
+
+        <button type="submit" class="gate-btn" id="gateSubmit">解锁</button>
+      </form>
+
+      <p class="gate-msg" id="gateMessage" role="status" aria-live="polite"></p>
+    </div>
+  </section>
+
+  <!-- 文件列表 -->
+  <section class="panel" id="listPanel" aria-labelledby="listTitle" hidden>
     <div class="panel-head">
       <h2 id="listTitle">全部文件</h2>
-      <p class="hint">点击「下载」即可保存到本地</p>
+      <p class="hint">点击「下载」解密并保存到本地</p>
     </div>
 
     <div class="table-scroll" id="tableScroll">
@@ -64,12 +101,16 @@
       <p class="empty-title">暂无文件</p>
       <p class="empty-desc">文件正在整理中，稍后再来看看。</p>
     </div>
+  </section>
 
-    <div id="errorState" class="empty empty-error" hidden>
-      <p class="empty-title">文件清单加载失败</p>
+  <!-- 错误提示 -->
+  <section class="panel" id="errorPanel" hidden>
+    <div class="empty empty-error">
+      <p class="empty-title">加载失败</p>
       <p class="empty-desc" id="errorDetail"></p>
     </div>
   </section>
+
 </main>
 
 <footer class="site-footer">
@@ -78,6 +119,7 @@
   </div>
 </footer>
 
+<script src="assets/vault.js"></script>
 <script src="assets/app.js"></script>
 </body>
 </html>

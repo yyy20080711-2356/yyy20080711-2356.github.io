@@ -8,3 +8,11 @@ desktop.ini
 ~$*
 *.tmp
 _shot*.png
+
+# 明文源文件：绝不上传
+inbox/*
+!inbox/_meta.json
+!inbox/.gitkeep
+
+# 旧的明文清单
+files.json

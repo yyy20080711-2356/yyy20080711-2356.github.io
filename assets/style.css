@@ -15,6 +15,9 @@
 
 * { box-sizing: border-box; }
 
+/* hidden 属性必须生效，否则会被 display:flex 等规则覆盖 */
+[hidden] { display: none !important; }
+
 html { -webkit-text-size-adjust: 100%; }
 
 body {
@@ -47,6 +50,9 @@ body {
   color: #fff;
   padding: 64px 0 0;
 }
+
+/* 统计栏隐藏时，用页头自身补足底部留白 */
+.hero.is-compact { padding-bottom: 52px; }
 
 .eyebrow {
   margin: 0 0 14px;
@@ -252,18 +258,126 @@ tbody tr:hover { background: #f8fafd; }
   align-items: center;
   gap: 6px;
   padding: 7px 14px;
+  border: 0;
   border-radius: 7px;
   background: var(--accent);
   color: #fff;
+  font: inherit;
   font-size: 13px;
   font-weight: 500;
   text-decoration: none;
   white-space: nowrap;
+  cursor: pointer;
   transition: background .15s ease;
 }
 
 .btn:hover { background: var(--accent-dark); }
 .btn svg { width: 14px; height: 14px; }
+
+.btn:disabled { opacity: .6; cursor: default; }
+.btn:disabled:hover { background: var(--accent); }
+
+/* ---------- 密码验证 ---------- */
+.gate { padding: 56px 26px 60px; }
+
+.gate-inner {
+  max-width: 380px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.gate-icon {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #eef3fc;
+  color: var(--accent);
+}
+
+.gate-icon svg { width: 26px; height: 26px; }
+
+.gate h2 {
+  margin: 0 0 8px;
+  font-size: 19px;
+  font-weight: 600;
+}
+
+.gate-desc {
+  margin: 0 0 26px;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--muted);
+}
+
+.gate-form {
+  display: flex;
+  gap: 10px;
+}
+
+.gate-input {
+  flex: 1;
+  min-width: 0;
+  padding: 11px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: #fff;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.gate-input::placeholder { color: #a3aebe; }
+
+.gate-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(27, 79, 216, .12);
+}
+
+.gate-input:disabled { background: #f6f8fb; color: var(--muted); }
+
+.gate-btn {
+  flex: none;
+  padding: 11px 22px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .15s ease;
+}
+
+.gate-btn:hover:not(:disabled) { background: var(--accent-dark); }
+.gate-btn:disabled { opacity: .65; cursor: not-allowed; }
+
+.gate-msg {
+  min-height: 20px;
+  margin: 14px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.gate-msg.is-error { color: #c22b2b; }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 
 /* ---------- Empty / error ---------- */
 .empty {
