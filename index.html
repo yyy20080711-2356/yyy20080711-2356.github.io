@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>文件下载中心</title>
+<meta name="description" content="杨应尧的文件下载中心，集中存放 Excel 表格等资料，支持一键下载。">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <p class="eyebrow">FILE LIBRARY</p>
+    <h1>文件下载中心</h1>
+    <p class="lead">集中存放表格与文档资料，所有文件均可直接下载。</p>
+
+    <dl class="stats">
+      <div class="stat">
+        <dt>文件总数</dt>
+        <dd id="statCount">—</dd>
+      </div>
+      <div class="stat">
+        <dt>资料总量</dt>
+        <dd id="statSize">—</dd>
+      </div>
+      <div class="stat">
+        <dt>最近更新</dt>
+        <dd id="statUpdated">—</dd>
+      </div>
+    </dl>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="panel" aria-labelledby="listTitle">
+    <div class="panel-head">
+      <h2 id="listTitle">全部文件</h2>
+      <p class="hint">点击「下载」即可保存到本地</p>
+    </div>
+
+    <div class="table-scroll">
+      <table id="fileTable">
+        <thead>
+          <tr>
+            <th scope="col" class="col-name">
+              <button type="button" class="sort" data-sort="name">文件名<span class="arrow"></span></button>
+            </th>
+            <th scope="col" class="col-cate">分类</th>
+            <th scope="col" class="col-size">
+              <button type="button" class="sort" data-sort="size">大小<span class="arrow"></span></button>
+            </th>
+            <th scope="col" class="col-date">
+              <button type="button" class="sort" data-sort="updated">更新时间<span class="arrow"></span></button>
+            </th>
+            <th scope="col" class="col-act">操作</th>
+          </tr>
+        </thead>
+        <tbody id="fileRows"></tbody>
+      </table>
+    </div>
+
+    <div id="emptyState" class="empty" hidden>
+      <p class="empty-title">暂无文件</p>
+      <p class="empty-desc">文件正在整理中，稍后再来看看。</p>
+    </div>
+
+    <div id="errorState" class="empty empty-error" hidden>
+      <p class="empty-title">文件清单加载失败</p>
+      <p class="empty-desc" id="errorDetail"></p>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <p>© <span id="year">2026</span> 杨应尧 · 文件下载中心</p>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+</body>
+</html>
