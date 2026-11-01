@@ -16,6 +16,7 @@
 
   var els = {
     rows: document.getElementById('fileRows'),
+    tableScroll: document.getElementById('tableScroll'),
     empty: document.getElementById('emptyState'),
     error: document.getElementById('errorState'),
     errorDetail: document.getElementById('errorDetail'),
@@ -136,6 +137,7 @@
     }).join('');
 
     els.empty.hidden = list.length > 0;
+    els.tableScroll.hidden = list.length === 0;
   }
 
   function renderStats() {
@@ -158,6 +160,7 @@
     els.errorDetail.textContent = message;
     els.rows.innerHTML = '';
     els.empty.hidden = true;
+    els.tableScroll.hidden = true;
   }
 
   /* ---------- 排序交互 ---------- */
