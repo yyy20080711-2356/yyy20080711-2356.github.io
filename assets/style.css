@@ -29,6 +29,12 @@ body {
   font-size: 15px;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+@media print {
+  body { display: none !important; }
 }
 
 .wrap {
@@ -125,6 +131,24 @@ main.wrap { padding-top: 36px; padding-bottom: 56px; }
   gap: 16px;
   padding: 22px 26px 18px;
   border-bottom: 1px solid var(--border);
+}
+
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.btn.lock {
+  background: transparent;
+  color: var(--text-soft);
+  border: 1px solid var(--border);
+  padding: 6px 12px;
+}
+
+.btn.lock:hover {
+  background: #f3f6fb;
+  color: var(--text);
 }
 
 .panel-head h2 {
@@ -276,6 +300,81 @@ tbody tr:hover { background: #f8fafd; }
 
 .btn:disabled { opacity: .6; cursor: default; }
 .btn:disabled:hover { background: var(--accent); }
+
+.btn.view { background: var(--navy); }
+.btn.view:hover { background: #16243d; }
+
+.viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(14, 26, 47, .62);
+}
+
+.viewer-panel {
+  width: min(1080px, 100%);
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.viewer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--border);
+}
+
+.viewer-head h3 {
+  margin: 0;
+  font-size: 16px;
+  word-break: break-all;
+}
+
+.viewer-meta {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.viewer-stage {
+  overflow: auto;
+  padding: 18px;
+  background: #f4f6fa;
+  min-height: 240px;
+}
+
+.view-canvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+  pointer-events: none;
+}
+
+.viewer-msg {
+  margin: 0;
+  padding: 0 22px 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.viewer-nav {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 22px 18px;
+}
 
 /* ---------- 密码验证 ---------- */
 .gate { padding: 56px 26px 60px; }

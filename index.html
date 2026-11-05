@@ -3,9 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>文件下载中心</title>
-<meta name="description" content="受保护的班级资料下载中心，需输入访问密码后使用。">
-<meta name="robots" content="noindex, nofollow">
+<title>资料查阅</title>
+<meta name="description" content="受保护的资料查阅页，仅可在线查看，无法下载。">
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
+<meta http-equiv="X-Content-Type-Options" content="nosniff">
+<meta http-equiv="Permissions-Policy" content="camera=(), microphone=(), geolocation=(), payment=()">
 <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
@@ -13,8 +17,8 @@
 <header class="hero">
   <div class="wrap">
     <p class="eyebrow">PROTECTED LIBRARY</p>
-    <h1>文件下载中心</h1>
-    <p class="lead">班级资料集中存放，加密保存，需验证密码后下载。</p>
+    <h1>资料查阅</h1>
+    <p class="lead">资料加密存放，仅可在线查阅，无法下载或保存。</p>
 
     <dl class="stats" id="statsBar" hidden>
       <div class="stat">
@@ -48,7 +52,7 @@
       </div>
 
       <h2 id="gateTitle">请输入访问密码</h2>
-      <p class="gate-desc">文件已加密保存，输入正确密码后才会显示文件列表。</p>
+      <p class="gate-desc">文件已加密保存。解锁后仅可在线查阅，页面不提供任何下载。</p>
 
       <form class="gate-form" id="gateForm" novalidate>
         <label class="sr-only" for="passwordInput">访问密码</label>
@@ -59,7 +63,10 @@
           class="gate-input"
           placeholder="访问密码"
           autocomplete="current-password"
+          autocapitalize="off"
+          autocorrect="off"
           spellcheck="false"
+          maxlength="128"
           required>
 
         <button type="submit" class="gate-btn" id="gateSubmit">解锁</button>
@@ -73,7 +80,10 @@
   <section class="panel" id="listPanel" aria-labelledby="listTitle" hidden>
     <div class="panel-head">
       <h2 id="listTitle">全部文件</h2>
-      <p class="hint">点击「下载」解密并保存到本地</p>
+      <div class="panel-actions">
+        <p class="hint">点击「查阅」在线查看，无法保存</p>
+        <button type="button" class="btn lock" id="lockBtn">锁定</button>
+      </div>
     </div>
 
     <div class="table-scroll" id="tableScroll">
@@ -90,7 +100,7 @@
             <th scope="col" class="col-date">
               <button type="button" class="sort" data-sort="updated">更新时间<span class="arrow"></span></button>
             </th>
-            <th scope="col" class="col-act">操作</th>
+            <th scope="col" class="col-act">查阅</th>
           </tr>
         </thead>
         <tbody id="fileRows"></tbody>
@@ -115,11 +125,30 @@
 
 <footer class="site-footer">
   <div class="wrap">
-    <p>© <span id="year">2026</span> 杨应尧 · 文件下载中心</p>
+    <p>© <span id="year">2026</span> 杨应尧 · 资料查阅</p>
   </div>
 </footer>
 
+<div class="viewer" id="viewer" hidden>
+  <div class="viewer-panel" role="dialog" aria-modal="true" aria-labelledby="viewerTitle">
+    <div class="viewer-head">
+      <div>
+        <h3 id="viewerTitle">查阅</h3>
+        <p class="viewer-meta" id="viewerMeta"></p>
+      </div>
+      <button type="button" class="btn lock" id="viewerClose">关闭</button>
+    </div>
+    <div class="viewer-stage" id="viewerStage"></div>
+    <p class="viewer-msg" id="viewerMsg"></p>
+    <div class="viewer-nav">
+      <button type="button" class="btn lock" id="viewerPrev" hidden>上一张</button>
+      <button type="button" class="btn lock" id="viewerNext" hidden>下一张</button>
+    </div>
+  </div>
+</div>
+
 <script src="assets/vault.js"></script>
+<script src="assets/preview.js"></script>
 <script src="assets/app.js"></script>
 </body>
 </html>

@@ -1,21 +1,32 @@
 /**
- * 文件下载中心
- *
- * 流程：读取 vault.json → 用户输入密码 → 派生密钥 → 解密清单 → 渲染列表
- * 点下载时再解密单个文件，密码不对拿不到任何明文。
+ * 仅在线查阅。不提供下载，明文只画到 canvas，打开调试工具立即锁定。
  */
 (function () {
   'use strict';
 
   var VAULT_URL = 'vault.json';
+  var MAX_PASSWORD_LENGTH = 128;
+  var AUTO_LOCK_MS = 3 * 60 * 1000;
+  var HIDDEN_LOCK_MS = 20 * 1000;
+  var MAX_BACKOFF_MS = 60 * 1000;
+  var FAIL_WINDOW_MS = 15 * 60 * 1000;
 
   var state = {
     vault: null,
     key: null,
     files: [],
+    version: 1,
     sortKey: null,
     sortDir: 1,
-    busy: false
+    busy: false,
+    failCount: 0,
+    failWindowStart: 0,
+    lockTimer: 0,
+    hiddenTimer: 0,
+    probeTimer: 0,
+    gallery: null,
+    canvas: null,
+    viewing: false
   };
 
   var els = {
@@ -35,10 +46,17 @@
     count: document.getElementById('statCount'),
     size: document.getElementById('statSize'),
     updated: document.getElementById('statUpdated'),
-    year: document.getElementById('year')
+    year: document.getElementById('year'),
+    lockBtn: document.getElementById('lockBtn'),
+    viewer: document.getElementById('viewer'),
+    viewerStage: document.getElementById('viewerStage'),
+    viewerTitle: document.getElementById('viewerTitle'),
+    viewerMeta: document.getElementById('viewerMeta'),
+    viewerClose: document.getElementById('viewerClose'),
+    viewerPrev: document.getElementById('viewerPrev'),
+    viewerNext: document.getElementById('viewerNext'),
+    viewerMsg: document.getElementById('viewerMsg')
   };
-
-  /* ---------- 工具函数 ---------- */
 
   function escapeHtml(str) {
     return String(str == null ? '' : str)
@@ -85,12 +103,11 @@
     return '';
   }
 
-  var downloadIcon =
+  var viewIcon =
     '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" ' +
     'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-    '<path d="M8 2v8"/><path d="M4.8 7.2 8 10.4l3.2-3.2"/><path d="M2.8 13.2h10.4"/></svg>';
-
-  /* ---------- 渲染 ---------- */
+    '<path d="M1.6 8s2.4-4.4 6.4-4.4S14.4 8 14.4 8s-2.4 4.4-6.4 4.4S1.6 8 1.6 8z"/>' +
+    '<circle cx="8" cy="8" r="1.7"/></svg>';
 
   function getSorted() {
     var list = state.files.slice();
@@ -142,8 +159,8 @@
           '<td class="num">' + formatSize(f.size) + '</td>' +
           '<td class="num">' + formatDate(f.updated) + '</td>' +
           '<td>' +
-            '<button type="button" class="btn dl" data-index="' + i + '">' +
-              downloadIcon + '<span>下载</span>' +
+            '<button type="button" class="btn view" data-index="' + i + '">' +
+              viewIcon + '<span>查阅</span>' +
             '</button>' +
           '</td>' +
         '</tr>';
@@ -168,8 +185,6 @@
     els.updated.textContent = latest ? formatDate(new Date(latest).toISOString()) : '—';
   }
 
-  /* ---------- 状态切换 ---------- */
-
   function showError(message) {
     els.errorPanel.hidden = false;
     els.errorDetail.textContent = message;
@@ -177,6 +192,7 @@
     els.listPanel.hidden = true;
     els.statsBar.hidden = true;
     els.hero.classList.add('is-compact');
+    closeViewer();
   }
 
   function showLocked() {
@@ -185,6 +201,7 @@
     els.errorPanel.hidden = true;
     els.statsBar.hidden = true;
     els.hero.classList.add('is-compact');
+    closeViewer();
   }
 
   function showList() {
@@ -196,6 +213,7 @@
     renderStats();
     renderRows();
     bindRowActions();
+    bumpActivity();
   }
 
   function setGateMessage(text, isError) {
@@ -210,16 +228,103 @@
     els.gateSubmit.textContent = busy ? '验证中…' : '解锁';
   }
 
-  /* ---------- 解锁 ---------- */
+  function clearLockTimer() {
+    if (state.lockTimer) {
+      clearTimeout(state.lockTimer);
+      state.lockTimer = 0;
+    }
+  }
+
+  function clearHiddenTimer() {
+    if (state.hiddenTimer) {
+      clearTimeout(state.hiddenTimer);
+      state.hiddenTimer = 0;
+    }
+  }
+
+  function burnCanvas() {
+    if (state.canvas && globalThis.Preview) Preview.burn(state.canvas);
+    state.canvas = null;
+    if (els.viewerStage) els.viewerStage.innerHTML = '';
+  }
+
+  function closeViewer() {
+    state.gallery = null;
+    state.viewing = false;
+    burnCanvas();
+    if (els.viewer) els.viewer.hidden = true;
+    if (els.viewerMsg) els.viewerMsg.textContent = '';
+  }
+
+  function wipeSession() {
+    state.key = null;
+    state.files = [];
+    state.sortKey = null;
+    state.sortDir = 1;
+    state.gallery = null;
+    if (els.rows) els.rows.innerHTML = '';
+    els.count.textContent = '—';
+    els.size.textContent = '—';
+    els.updated.textContent = '—';
+    if (els.gateInput) els.gateInput.value = '';
+    closeViewer();
+    clearLockTimer();
+    clearHiddenTimer();
+  }
+
+  function lockVault(reason) {
+    wipeSession();
+    showLocked();
+    setGateMessage(reason || '已锁定，请重新输入密码。', false);
+    if (els.gateInput) els.gateInput.focus();
+  }
+
+  function bumpActivity() {
+    if (!state.key) return;
+    clearLockTimer();
+    state.lockTimer = setTimeout(function () {
+      lockVault('闲置超时，已自动锁定。');
+    }, AUTO_LOCK_MS);
+  }
+
+  function backoffMs() {
+    if (state.failCount < 3) return 0;
+    var shift = Math.min(state.failCount - 2, 10);
+    return Math.min(MAX_BACKOFF_MS, 2000 * Math.pow(2, shift - 1));
+  }
+
+  function noteFailure() {
+    var now = Date.now();
+    if (!state.failWindowStart || now - state.failWindowStart > FAIL_WINDOW_MS) {
+      state.failWindowStart = now;
+      state.failCount = 0;
+    }
+    state.failCount += 1;
+  }
+
+  function noteSuccess() {
+    state.failCount = 0;
+    state.failWindowStart = 0;
+  }
 
   function handleUnlock(event) {
     event.preventDefault();
     if (state.busy) return;
 
+    var wait = backoffMs();
+    if (wait > 0) {
+      setGateMessage('尝试次数过多，请 ' + Math.ceil(wait / 1000) + ' 秒后再试。', true);
+      return;
+    }
+
     var password = els.gateInput.value;
     if (!password) {
       setGateMessage('请输入密码。', true);
       els.gateInput.focus();
+      return;
+    }
+    if (password.length > MAX_PASSWORD_LENGTH) {
+      setGateMessage('密码过长。', true);
       return;
     }
 
@@ -228,24 +333,29 @@
 
     Vault.unlock(password, state.vault)
       .then(function (result) {
+        password = '';
+        noteSuccess();
         state.key = result.key;
-        state.files = result.files.filter(function (f) {
-          return f && f.name && f.path && f.iv;
-        });
-
+        state.version = result.version || 1;
+        state.files = result.files;
         els.gateInput.value = '';
         setGateMessage('', false);
         showList();
       })
       .catch(function (err) {
-        // GCM 认证失败 = 密码错误
+        password = '';
+        noteFailure();
         var isWrong = err && /OperationError|认证|decrypt/i.test(
           (err.name || '') + ' ' + (err.message || '')
         );
+        var extra = backoffMs() > 0
+          ? ' 请等待 ' + Math.ceil(backoffMs() / 1000) + ' 秒后再试。'
+          : '';
+        var support = err && /Web Crypto|HTTPS/.test(err.message || '');
         setGateMessage(
-          isWrong
-            ? '密码不正确，请重新输入。'
-            : '解锁失败：' + (err && err.message ? err.message : '未知错误'),
+          (support
+            ? err.message
+            : (isWrong ? '密码不正确，请重新输入。' : '解锁失败，请稍后重试。')) + extra,
           true
         );
         els.gateInput.select();
@@ -255,50 +365,77 @@
       });
   }
 
-  /* ---------- 下载 ---------- */
+  function mountCanvas(canvas) {
+    burnCanvas();
+    state.canvas = canvas;
+    canvas.className = 'view-canvas';
+    els.viewerStage.innerHTML = '';
+    els.viewerStage.appendChild(canvas);
+  }
+
+  function onPreviewPage(canvas, i, total, fileName) {
+    mountCanvas(canvas);
+    els.viewerMeta.textContent = total > 1
+      ? ('仅供查阅  ' + i + ' / ' + total)
+      : '仅供查阅，无法保存文件';
+    els.viewerMeta.setAttribute('data-i', String(i));
+    if (fileName) els.viewerTitle.textContent = fileName;
+  }
+
+  function openViewer(entry) {
+    if (!entry || !state.key) return;
+    bumpActivity();
+    state.viewing = true;
+    state.gallery = null;
+    els.viewer.hidden = false;
+    els.viewerTitle.textContent = entry.name;
+    els.viewerMeta.textContent = '解密中…';
+    els.viewerMsg.textContent = '不提供下载。打开调试工具会立即锁定。';
+    els.viewerPrev.hidden = true;
+    els.viewerNext.hidden = true;
+    els.viewerStage.innerHTML = '';
+
+    Vault.reveal(state.key, entry, state.version)
+      .then(function (bytes) {
+        return Preview.render(bytes, entry.name, onPreviewPage);
+      })
+      .then(function (result) {
+        if (!state.viewing) return;
+        if (!result || result.kind === 'blocked' || result.kind === 'empty') {
+          els.viewerMeta.textContent = '该类型仅可在线查阅，当前格式无法预览。';
+          return;
+        }
+        if (result.kind === 'gallery') {
+          state.gallery = result;
+          els.viewerPrev.hidden = result.total < 2;
+          els.viewerNext.hidden = result.total < 2;
+        }
+      })
+      .catch(function () {
+        if (!state.viewing) return;
+        els.viewerMeta.textContent = '查阅失败';
+        els.viewerMsg.textContent = '内容无法在线显示。';
+      });
+  }
 
   function bindRowActions() {
     Array.prototype.forEach.call(
-      els.rows.querySelectorAll('.dl'),
+      els.rows.querySelectorAll('.view'),
       function (btn) {
         btn.addEventListener('click', function () {
           var entry = getSorted()[Number(btn.getAttribute('data-index'))];
-          if (!entry || !state.key) return;
-
-          var label = btn.querySelector('span');
-          var original = label.textContent;
-
-          btn.disabled = true;
-          label.textContent = '解密中';
-
-          Vault.download(state.key, entry)
-            .then(function () {
-              label.textContent = '已完成';
-              setTimeout(function () {
-                label.textContent = original;
-                btn.disabled = false;
-              }, 1600);
-            })
-            .catch(function (err) {
-              label.textContent = '失败';
-              console.error(err);
-              setTimeout(function () {
-                label.textContent = original;
-                btn.disabled = false;
-              }, 2200);
-            });
+          openViewer(entry);
         });
       }
     );
   }
-
-  /* ---------- 排序交互 ---------- */
 
   function bindSorting() {
     var buttons = document.querySelectorAll('.sort');
 
     Array.prototype.forEach.call(buttons, function (btn) {
       btn.addEventListener('click', function () {
+        bumpActivity();
         var key = btn.getAttribute('data-sort');
 
         if (state.sortKey === key) {
@@ -322,16 +459,120 @@
     });
   }
 
-  /* ---------- 启动 ---------- */
+  function blockExfil(event) {
+    var type = event.type;
+    if (type === 'contextmenu' || type === 'dragstart' || type === 'copy' || type === 'cut' || type === 'selectstart') {
+      event.preventDefault();
+      return false;
+    }
+    if (type === 'keydown') {
+      var k = event.key;
+      var ctrl = event.ctrlKey || event.metaKey;
+      var blocked =
+        k === 'F12' ||
+        k === 'PrintScreen' ||
+        (ctrl && event.shiftKey && (k === 'I' || k === 'J' || k === 'C' || k === 'i' || k === 'j' || k === 'c')) ||
+        (ctrl && (k === 's' || k === 'S' || k === 'p' || k === 'P' || k === 'u' || k === 'U')) ||
+        (event.altKey && (k === 'PrintScreen' || k === 'p' || k === 'P'));
+      if (blocked) {
+        event.preventDefault();
+        if (state.key) lockVault('检测到调试或保存操作，已锁定。');
+        return false;
+      }
+    }
+  }
+
+  function startProbe() {
+    if (state.probeTimer) return;
+    var last = Date.now();
+    state.probeTimer = setInterval(function () {
+      var now = Date.now();
+      if (now - last > 1400 && state.key) {
+        lockVault('检测到调试环境，已锁定。');
+      }
+      last = now;
+      var gap = (window.outerWidth - window.innerWidth) > 180 ||
+                (window.outerHeight - window.innerHeight) > 220;
+      if (gap && state.key) {
+        lockVault('检测到开发者工具，已锁定。');
+      }
+    }, 700);
+  }
+
+  function bindSessionGuards() {
+    ['click', 'mousemove', 'touchstart'].forEach(function (evt) {
+      document.addEventListener(evt, bumpActivity, { passive: true });
+    });
+
+    ['contextmenu', 'dragstart', 'copy', 'cut', 'selectstart', 'keydown'].forEach(function (evt) {
+      document.addEventListener(evt, blockExfil);
+    });
+
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) {
+        clearHiddenTimer();
+        state.hiddenTimer = setTimeout(function () {
+          if (document.hidden) lockVault('离开页面过久，已自动锁定。');
+        }, HIDDEN_LOCK_MS);
+      } else {
+        clearHiddenTimer();
+        bumpActivity();
+      }
+    });
+
+    window.addEventListener('pagehide', function () {
+      wipeSession();
+    });
+    window.addEventListener('blur', function () {
+      if (state.viewing) closeViewer();
+    });
+
+    if (els.lockBtn) {
+      els.lockBtn.addEventListener('click', function () {
+        lockVault('已手动锁定。');
+      });
+    }
+    if (els.viewerClose) {
+      els.viewerClose.addEventListener('click', closeViewer);
+    }
+    if (els.viewerPrev) {
+      els.viewerPrev.addEventListener('click', function () {
+        if (state.gallery && state.gallery.go) {
+          var idx = Number(els.viewerMeta.getAttribute('data-i') || '1') - 2;
+          state.gallery.go(idx);
+        }
+      });
+    }
+    if (els.viewerNext) {
+      els.viewerNext.addEventListener('click', function () {
+        if (state.gallery && state.gallery.go) {
+          var idx = Number(els.viewerMeta.getAttribute('data-i') || '1');
+          state.gallery.go(idx);
+        }
+      });
+    }
+
+    startProbe();
+  }
 
   function init() {
+    if (location.search || location.hash) {
+      history.replaceState(null, '', location.pathname);
+    }
     if (els.year) els.year.textContent = new Date().getFullYear();
 
     bindSorting();
+    bindSessionGuards();
     els.gateForm.addEventListener('submit', handleUnlock);
+    els.gateInput.setAttribute('maxlength', String(MAX_PASSWORD_LENGTH));
     els.gateInput.focus();
 
-    fetch(VAULT_URL, { cache: 'no-cache' })
+    fetch(VAULT_URL, {
+      cache: 'no-store',
+      credentials: 'omit',
+      mode: 'same-origin',
+      referrerPolicy: 'no-referrer'
+    })
       .then(function (res) {
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return res.json();
@@ -340,11 +581,14 @@
         if (!vault || !vault.kdf || !vault.manifest) {
           throw new Error('vault.json 格式不正确');
         }
+        if (typeof vault.kdf.iterations !== 'number' || vault.kdf.iterations < 100000) {
+          throw new Error('KDF 参数异常');
+        }
         state.vault = vault;
         showLocked();
       })
-      .catch(function (err) {
-        showError('无法读取加密参数 vault.json（' + err.message + '）。');
+      .catch(function () {
+        showError('无法读取加密参数，请刷新页面重试。');
       });
   }
 

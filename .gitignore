@@ -16,3 +16,11 @@ inbox/*
 
 # 旧的明文清单
 files.json
+
+# 密钥与本地环境
+.env
+.env.*
+*.key
+*.pem
+password.txt
+vault.password

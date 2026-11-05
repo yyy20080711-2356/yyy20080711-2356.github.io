@@ -1,6 +1,6 @@
 /**
  * 端到端验证：用 Node 的 WebCrypto 复刻浏览器解密流程
- * 确认 PBKDF2 派生 + AES-GCM 解包（tag 追加在密文末尾）能与加密脚本互通。
+ * 同时支持 v1 与 v2。
  */
 'use strict';
 
@@ -10,10 +10,11 @@ const { webcrypto } = require('crypto');
 
 const subtle = webcrypto.subtle;
 const ROOT = path.resolve(__dirname, '..');
+const encoder = new TextEncoder();
 
-const PASSWORD = process.argv[2];
+const PASSWORD = process.env.VAULT_PASSWORD || process.argv[2];
 if (!PASSWORD) {
-  console.error('用法：node tools/verify.js <密码>');
+  console.error('用法：VAULT_PASSWORD=... node tools/verify.js');
   process.exit(1);
 }
 
@@ -21,22 +22,14 @@ function b64ToBytes(b64) {
   return new Uint8Array(Buffer.from(b64, 'base64'));
 }
 
-function concat(a, b) {
-  const out = new Uint8Array(a.length + b.length);
-  out.set(a, 0);
-  out.set(b, a.length);
-  return out;
-}
-
-async function deriveKey(password, kdf) {
+async function deriveV1Key(password, kdf) {
   const baseKey = await subtle.importKey(
     'raw',
-    new TextEncoder().encode(password),
+    encoder.encode(password),
     'PBKDF2',
     false,
     ['deriveKey']
   );
-
   return subtle.deriveKey(
     {
       name: 'PBKDF2',
@@ -51,41 +44,90 @@ async function deriveKey(password, kdf) {
   );
 }
 
-async function decrypt(key, ivB64, buffer) {
-  const data = new Uint8Array(buffer);
-  const body = data.subarray(0, data.length - 16);
-  const tag = data.subarray(data.length - 16);
-
-  const plain = await subtle.decrypt(
-    { name: 'AES-GCM', iv: b64ToBytes(ivB64), tagLength: 128 },
-    key,
-    concat(body, tag)
+async function deriveV2Keys(password, vault) {
+  const baseKey = await subtle.importKey(
+    'raw',
+    encoder.encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits']
   );
+  const bits = await subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      salt: b64ToBytes(vault.kdf.salt),
+      iterations: vault.kdf.iterations,
+      hash: vault.kdf.hash
+    },
+    baseKey,
+    256
+  );
+  const hkdfKey = await subtle.importKey('raw', bits, 'HKDF', false, ['deriveKey']);
+  const salt = b64ToBytes(vault.hkdf.salt);
+  const hash = vault.hkdf.hash || 'SHA-256';
+  const manifestKey = await subtle.deriveKey(
+    { name: 'HKDF', hash, salt, info: encoder.encode(vault.hkdf.infoManifest) },
+    hkdfKey,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['decrypt']
+  );
+  const filesKey = await subtle.deriveKey(
+    { name: 'HKDF', hash, salt, info: encoder.encode(vault.hkdf.infoFiles) },
+    hkdfKey,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['decrypt']
+  );
+  return { manifestKey, filesKey };
+}
 
+async function decrypt(key, ivB64, buffer, aad) {
+  const params = {
+    name: 'AES-GCM',
+    iv: b64ToBytes(ivB64),
+    tagLength: 128
+  };
+  if (aad) params.additionalData = encoder.encode(aad);
+  const plain = await subtle.decrypt(params, key, buffer);
   return new Uint8Array(plain);
 }
 
 async function main() {
   const vault = JSON.parse(fs.readFileSync(path.join(ROOT, 'vault.json'), 'utf8'));
-  const key = await deriveKey(PASSWORD, vault.kdf);
+  const version = Number(vault.version) || 1;
 
-  // 1. 解密清单
+  let manifestKey;
+  let filesKey;
+  if (version >= 2) {
+    const keys = await deriveV2Keys(PASSWORD, vault);
+    manifestKey = keys.manifestKey;
+    filesKey = keys.filesKey;
+  } else {
+    manifestKey = await deriveV1Key(PASSWORD, vault.kdf);
+    filesKey = manifestKey;
+  }
+
   const manifestBuf = fs.readFileSync(path.join(ROOT, vault.manifest.path));
-  const manifestPlain = await decrypt(key, vault.manifest.iv, manifestBuf);
+  const manifestAad = version >= 2 ? 'vault-v2-manifest' : null;
+  const manifestPlain = await decrypt(manifestKey, vault.manifest.iv, manifestBuf, manifestAad);
   const manifest = JSON.parse(new TextDecoder().decode(manifestPlain));
 
-  console.log('✓ 清单解密成功，共 ' + manifest.files.length + ' 条记录');
+  console.log('✓ 清单解密成功（v' + version + '），共 ' + manifest.files.length + ' 条记录');
 
-  // 2. 逐个解密并与原始文件比对
   let allMatch = true;
 
   for (const entry of manifest.files) {
     const encBuf = fs.readFileSync(path.join(ROOT, entry.path));
-    const plain = await decrypt(key, entry.iv, encBuf);
+    const fileAad = version >= 2 ? ('vault-v2-file:' + entry.path) : null;
+    const plain = await decrypt(filesKey, entry.iv, encBuf, fileAad);
 
     const originalPath = path.join(ROOT, 'inbox', entry.name);
+    if (!fs.existsSync(originalPath)) {
+      console.log('  ? ' + entry.name + '  inbox 中无对应原文，跳过比对');
+      continue;
+    }
     const original = fs.readFileSync(originalPath);
-
     const same = Buffer.compare(Buffer.from(plain), original) === 0;
     if (!same) allMatch = false;
 
